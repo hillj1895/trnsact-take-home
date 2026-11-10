@@ -1,0 +1,24 @@
+{
+  "name": "trnsact-take-home",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.10"
+  },
+  "scripts": {
+    "crawl": "pnpm --filter @trnsact/crawler run cli crawl",
+    "probe": "pnpm --filter @trnsact/crawler run cli probe",
+    "sources:list": "pnpm --filter @trnsact/crawler run cli sources:list",
+    "sources:validate": "pnpm --filter @trnsact/crawler run cli sources:validate",
+    "fixtures:capture": "pnpm --filter @trnsact/crawler run cli fixtures:capture",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,36 @@
+Log of prompts sent to Claude Code during the take-home (verbatim, in order).
+================================================================================
+
+[1] Planning kickoff
+--------------------------------------------------------------------------------
+I have an interview take home assignment that I need to get planned out and completed. Here is the email outlining the requirements:
+
+<pasted: assignment email from Beckham — scraper for one dealer site, capture details/media/price/availability, store in a DB across runs, show per-unit change tracking, write-up for scaling to thousands of dealers; deliverables: code, schema, data export, one-page write-up, time spent + AI usage; due EOD Tue Nov 10>
+
+For now, I just want to plan and go back and forth a bit on how I should tackle the problem, what the final solution should look like, and frankly some areas that I can speak to that highlight my thought process.
+
+Here are a few initial thoughts that I have about the ask:
+- Would like to build the output in a monorepo that I can host on Git
+- Clear SOC between projects
+- Clear scripts that can handle the management of the different processes
+- Built in a Node/Typescript environment
+- I found a candidate for a site that could be scraped for data at https://www.transwest.com
+- Built with the intention of being hosted in AWS with clear methods to execute/start processes
+
+From here, I would like to have a planning dialoge where we make decisions based on the requirements we have, as well as note potential gaps where we might need more clarity if this were to make it to a production system.
+
+[2] Query log + SSR check
+--------------------------------------------------------------------------------
+Okay most of these look good and we can revisit as we get there. Also, to speak to the thought process here, I would like you to output my queries to you to a file called CLAUDE_QUERIES.txt.
+
+Let's start with the scraping. I have a link here that shows a proper inventory page: https://www.transwest.com/trucks/type/all/store/. I am not seeing the initial "No Matches" show up on the screen so I am concerned this could be a SSR page (which would make sense for an inventory page), can you confirm that?
+
+[3] Monorepo + generic scraper
+--------------------------------------------------------------------------------
+Yeah let's go ahead and create the monorepo. For the time being, let's not worry about persisting the fetched data, just want to focus on fetching. I am happy with the pnpm proposed workspace organization strategy outlined above. Few things I would like to outline about the scraper:
+- We should allow it to be genericized as to be able to expand to other dealers and data sources, and create a repeatable system for doing so, optimally without the need for deployments
+- Feel free to look around for other similar truck commercial trucking dealer websites to see how we might want to genericize
+
+[4] Git setup
+--------------------------------------------------------------------------------
+Okay yeah I would like to get more organized with git. Lets go ahead and link with this repo I just created: https://github.com/hillj1895/trnsact-take-home and create an initial commit following commitizen-esque standards

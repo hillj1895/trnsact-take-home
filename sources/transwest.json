@@ -1,0 +1,97 @@
+{
+  "$comment": "Transwest (multi-location truck/trailer dealer group). Agency-built Laravel Livewire site; fully server-rendered. Cards carry structured data-* attributes plus a JSON blob; detail pages have schema.org Vehicle JSON-LD and two spec layouts.",
+  "id": "transwest",
+  "version": 1,
+  "enabled": true,
+  "dealer": { "id": "transwest", "name": "Transwest" },
+  "driver": "html",
+  "baseUrl": "https://www.transwest.com",
+  "notes": "JSON-LD itemCondition is wrong (always NewCondition) — spec table wins. Detail page only shows VIN last 6; full VIN is in card data + JSON-LD. Rentals are mixed in (is-rental).",
+
+  "http": {
+    "$comment": "CloudFront WAF 403s any self-identifying bot UA even though robots.txt allows all paths. Browser UA + 1 req/s. Open question for production: dealer consent / allow-listing.",
+    "requestsPerSecond": 1,
+    "concurrency": 2,
+    "timeoutMs": 20000,
+    "retries": 3,
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+  },
+
+  "list": {
+    "startUrls": ["/trucks/type/all/store/", "/trailers/type/all/store/"],
+    "pagination": { "type": "queryParam", "param": "page", "start": 1, "maxPages": 60 },
+    "item": "li[data-comp-vehicle-card]",
+    "total": { "selector": ".faceted-search-pagination-sort-clear span", "regex": "/\\s*([\\d,]+)\\s*$" },
+    "fields": {
+      "platformId": { "attr": "wire:key", "regex": "product-(\\d+)" },
+      "stockNumber": { "attr": "data-product-stock-id", "transforms": ["trim"] },
+      "listingUrl": { "attr": "data-product-url", "transforms": ["absUrl"] },
+      "title": { "attr": "data-product-title", "transforms": ["trim"] },
+      "price": { "attr": "data-product-price", "transforms": ["price"] },
+      "priceText": { "attr": "data-product-price", "transforms": ["trim"] },
+      "msrp": { "attr": "data-product-msrp", "transforms": ["price"] },
+      "location": { "attr": "data-product-location", "transforms": ["trim"] },
+      "isRental": { "attr": "data-product-is-rental", "transforms": ["bool"] },
+      "isSold": { "attr": "data-product-is-sold", "transforms": ["bool"] },
+      "vin": { "attr": "data-form-attributes", "json": "vin", "transforms": ["trim", "upper"] },
+      "year": { "attr": "data-form-attributes", "json": "year", "transforms": ["int"] },
+      "make": { "attr": "data-form-attributes", "json": "make", "transforms": ["trim"] },
+      "model": { "attr": "data-form-attributes", "json": "model", "transforms": ["trim"] },
+      "submodel": { "attr": "data-form-attributes", "json": "submodel", "transforms": ["trim"] },
+      "category": { "attr": "data-form-attributes", "json": "vehicle_type", "transforms": ["trim"] },
+      "condition": { "attr": "data-form-attributes", "json": "condition", "transforms": ["trim"] },
+      "mileage": { "attr": "data-form-attributes", "json": "mileage", "transforms": ["number"] },
+      "availability": { "attr": "data-form-attributes", "json": "status", "transforms": ["trim"] }
+    }
+  },
+
+  "detail": {
+    "enabled": true,
+    "jsonLd": { "type": "Vehicle" },
+    "specs": [
+      { "row": ".section-product-specs__list li", "label": "span" },
+      { "row": ".basic-panel__detail", "label": "dt", "value": "dd" }
+    ],
+    "fields": {
+      "vin": { "from": "jsonld", "path": "vehicleIdentificationNumber", "transforms": ["trim", "upper"] },
+      "stockNumber": [
+        { "from": "spec", "label": "Stock ID" },
+        { "from": "jsonld", "path": "sku" }
+      ],
+      "year": { "from": "spec", "label": "Year", "transforms": ["int"] },
+      "make": [
+        { "from": "spec", "label": "Make" },
+        { "from": "jsonld", "path": "manufacturer.name" }
+      ],
+      "model": [
+        { "from": "spec", "label": "Model" },
+        { "from": "jsonld", "path": "model" }
+      ],
+      "category": { "from": "spec", "label": "Type" },
+      "price": [
+        { "from": "spec", "label": "List Price", "transforms": ["price"] },
+        { "from": "jsonld", "path": "offers.price", "transforms": ["price"] }
+      ],
+      "availability": { "from": "spec", "label": "Status" },
+      "condition": [
+        { "from": "spec", "label": "Condition" },
+        { "from": "jsonld", "path": "itemCondition", "regex": "^(New|Used|Refurbished)" }
+      ],
+      "mileage": { "from": "spec", "label": ["Mileage", "Odometer"], "transforms": ["number"] },
+      "hours": { "from": "spec", "label": ["Hours", "Engine Hours", "Hour Meter"], "transforms": ["number"] },
+      "serialNumber": { "from": "spec", "label": ["Serial Number", "Serial #", "Serial"] }
+    },
+    "media": [
+      { "kind": "image", "extract": { "from": "jsonld", "path": "image[].url" }, "include": "/inventory/images/" },
+      { "kind": "video", "extract": { "selector": "iframe[src]", "attr": "src" }, "include": "youtube\\.com|youtu\\.be|vimeo\\.com|wistia", "exclude": "live_stream" },
+      { "kind": "video", "extract": { "selector": "a[href*='youtube.com/watch'], a[href*='youtu.be/'], a[href*='vimeo.com/']", "attr": "href" } },
+      { "kind": "document", "extract": { "selector": "a[href$='.pdf' i], a[href*='.pdf?' i]", "attr": "href" } }
+    ]
+  },
+
+  "identity": ["platformId", "stockNumber", "vin"],
+
+  "normalize": {
+    "availability": { "available for lease": "available", "available for rent": "available" }
+  }
+}

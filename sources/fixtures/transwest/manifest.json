@@ -1,0 +1,20 @@
+{
+  "$comment": "Saved pages used by the offline contract test (apps/crawler/test/sources.test.ts). Refresh with `pnpm fixtures:capture transwest`.",
+  "capturedAt": "2026-11-10T16:20:00.000Z",
+  "list": [
+    { "file": "list-page-1.html", "url": "https://www.transwest.com/trucks/type/all/store/?page=1" }
+  ],
+  "detail": [
+    {
+      "file": "detail-95H1554.html",
+      "url": "https://www.transwest.com/trucks/type/dump/store/st-michael-mn-commercial-trucks-and-trailers/used-2019-freightliner-m2-106-95h1554/"
+    }
+  ],
+  "expect": {
+    "minListItems": 10,
+    "listFields": ["platformId", "stockNumber", "listingUrl", "vin", "year", "make", "model", "priceText", "availability"],
+    "unitFields": ["stockNumber", "vin", "year", "make", "model", "condition", "availability", "listingUrl"],
+    "minImages": 1,
+    "minSpecs": 10
+  }
+}
