@@ -1,8 +1,61 @@
-# Dealer Inventory Crawler
+# Dealer Inventory Scraper
 
-Nightly scraper for commercial truck / equipment dealer inventory. Built for one dealer
-([Transwest](https://www.transwest.com)), designed so that adding the next thousand is mostly
-**configuration, not code**.
+Take-home submission by Joe Hill: a nightly scraper for commercial truck dealer inventory, built
+for one dealer ([Transwest](https://www.transwest.com)) and designed to scale to thousands.
+
+## Deliverables
+
+| Deliverable                   | Where                                                                                                                                                                                                                                                                                              |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Code**                      | This repo: [`packages/`](packages/), [`apps/crawler/`](apps/crawler/), dealer configs in [`sources/`](sources/). Setup and commands are under [Technical documentation](#technical-documentation) below                                                                                            |
+| **Database schema**           | [`packages/db/migrations/0001_init.sql`](packages/db/migrations/0001_init.sql) (+ [`0002_details_doc.sql`](packages/db/migrations/0002_details_doc.sql))                                                                                                                                           |
+| **Export of the stored data** | [`exports/`](exports/), starting at [`exports/README.md`](exports/README.md): units, change events, price and availability history, media and runs, as CSV + NDJSON. Real inventory through a simulated week, plus a real two-crawl diff in [`exports/real-crawl-pair/`](exports/real-crawl-pair/) |
+| **One-page write-up**         | [Below](#write-up): how it was built and why, scaling to thousands of dealers, questions I'd ask                                                                                                                                                                                                   |
+| **Time taken**                | ~3hrs                                                                                                                                                                                                                                                                                              |
+| **How AI was used**           | [Below](#how-i-used-ai), and every prompt in [`CLAUDE_QUERIES.txt`](CLAUDE_QUERIES.txt)                                                                                                                                                                                                            |
+
+## Write-up
+
+### How I built it and why
+
+I picked Transwest, a truck dealer with about 356 units listed. Their site is server-rendered, which made life easier: everything I needed was in the HTML, either on the listing cards or in the structured data on each detail page.
+
+I didn't want to write a one-off scraper, so I split it into two parts. The code knows how to read a kind of website. Each dealer then gets a small JSON config that says where to find things on its site. Adding a dealer on a platform we already support means writing a config, not code, and no deploy.
+
+For tracking changes, I didn't want to compare every record field by field each night. Instead, each unit gets a fingerprint for its price, its details and its photos. Each run gets loaded into Postgres, and a single SQL transaction works out what's new, what changed and what disappeared, then logs each change with before and after values. Price and availability history are kept as date ranges, so you can ask what a truck cost on any given day.
+
+The thing I cared most about was not crying wolf. If a scrape breaks halfway through, it shouldn't look like the dealer sold their whole lot overnight. Every run grades its own health, and units are only marked removed after they've been missing from two good runs in a row.
+
+Since I couldn't wait a week to see real inventory change, I built a fake dealer website that looks like Transwest's. Tests can edit it or break it between "nights". That turned up a real bug: a detail page that failed to load looked like every photo on the unit had been deleted. The data export comes from that same setup: the real inventory, run through a scripted week of changes. I also included a diff of two real crawls a few hours apart, which already caught genuine price changes and a sold truck coming back on the market.
+
+### Scaling to thousands of dealers
+
+On AWS I'd queue one job per dealer each night, run the crawls on Fargate containers, keep the raw pages in S3, and update Postgres per dealer. The compute is cheap, probably under $10 a month. The real costs are people's time and sites that fight back.
+
+A lot of dealers run on the same few website platforms, so one config can cover many of them. The rest is a long tail, where I'd prefer a dealer's own feed, then plain HTML, and use a headless browser only as a last resort. When a site changes its layout, the health checks catch it (fields going missing, unit counts dropping) and nothing gets removed until someone fixes the config. Duplicates across dealer groups and marketplaces would be matched by VIN. Photos would be downloaded once, deduped and served from S3. Monitoring comes almost for free from the per-run health summaries.
+
+### Questions I'd ask
+
+- Do we have permission from dealers? Transwest's firewall blocks obvious bots, so I used a browser-like user agent. I'd rather be allow-listed than sneak around.
+- Who uses this data, and how fresh does it need to be?
+- Most dealers never say "sold", they just take the listing down. Is "probably sold" good enough?
+- Is the same truck on two sites one vehicle or two?
+- Are there feeds we could use instead of scraping?
+
+### Time taken
+
+About 3 hours.
+
+### How I used AI
+
+I used Claude Code as a pair programmer throughout, and every prompt is logged verbatim in [`CLAUDE_QUERIES.txt`](CLAUDE_QUERIES.txt). It did a lot of the research and most of the typing. I set the direction: making it generic, pushing for a database-native way to track changes, asking for the fake-site test setup, and deciding what to leave as design only. It needed checking along the way. It misjudged how the site rendered, which a quick look at the raw HTML cleared up, and it wrote some SQL that broke a database constraint, which the tests caught.
+
+---
+
+# Technical documentation
+
+Deeper dives: [how the components fit together](docs/components.md) ·
+[change detection design](docs/change-detection-plan.md) · [data export](exports/README.md).
 
 ## Quick start
 
@@ -22,18 +75,18 @@ pnpm simulate --reset
 Useful flags: `--max-pages 1 --limit 5` (quick partial run), `--no-detail` (list pages only),
 `--no-persist` (skip the DB), `--base-url URL` (same config, another host, e.g. the mock dealer).
 
-| Command | What it does |
-|---|---|
-| `pnpm crawl <id\|all>` | Crawl one source or every enabled source; writes `units.ndjson`, `errors.ndjson`, `summary.json` |
-| `pnpm probe <id> [--limit N]` | Live check while authoring a config — prints normalized units, writes nothing |
-| `pnpm sources:list` / `sources:validate` | List / validate all source configs (validate exits non-zero → CI gate) |
-| `pnpm fixtures:capture <id>` | Save list page 1 + one detail page as offline test fixtures |
-| `pnpm db:import <runDir>` | Persist a saved run directory into the DB |
-| `pnpm simulate [runDir] --reset` | Seed the mock dealer with a real crawl, run a scripted week through the full pipeline, export to `exports/` |
-| `pnpm export [sourceId] [--out DIR]` | Export any inventory DB (units, events, price/availability history, media, runs) as CSV + NDJSON |
-| `pnpm db:migrate` / `db:reset` | Apply SQL migrations / drop and re-create (local) |
-| `pnpm test:scenarios [-t name]` | End-to-end change scenarios against the mock dealer (needs `TEST_DATABASE_URL`) |
-| `pnpm mock:serve [port]` | Run the mock dealer site standalone (default :4010) |
+| Command                                  | What it does                                                                                                |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `pnpm crawl <id\|all>`                   | Crawl one source or every enabled source; writes `units.ndjson`, `errors.ndjson`, `summary.json`            |
+| `pnpm probe <id> [--limit N]`            | Live check while authoring a config — prints normalized units, writes nothing                               |
+| `pnpm sources:list` / `sources:validate` | List / validate all source configs (validate exits non-zero → CI gate)                                      |
+| `pnpm fixtures:capture <id>`             | Save list page 1 + one detail page as offline test fixtures                                                 |
+| `pnpm db:import <runDir>`                | Persist a saved run directory into the DB                                                                   |
+| `pnpm simulate [runDir] --reset`         | Seed the mock dealer with a real crawl, run a scripted week through the full pipeline, export to `exports/` |
+| `pnpm export [sourceId] [--out DIR]`     | Export any inventory DB (units, events, price/availability history, media, runs) as CSV + NDJSON            |
+| `pnpm db:migrate` / `db:reset`           | Apply SQL migrations / drop and re-create (local)                                                           |
+| `pnpm test:scenarios [-t name]`          | End-to-end change scenarios against the mock dealer (needs `TEST_DATABASE_URL`)                             |
+| `pnpm mock:serve [port]`                 | Run the mock dealer site standalone (default :4010)                                                         |
 
 ## Layout
 
@@ -58,10 +111,10 @@ contain no code. `testkit` is a dev-only dependency of the crawler's tests.
 
 Two halves:
 
-- **Drivers (code)** know how to talk to a *kind* of site. Today: `html` (server-rendered list
+- **Drivers (code)** know how to talk to a _kind_ of site. Today: `html` (server-rendered list
   pages + optional detail pages). Planned: `json-api` (sites backed by Algolia / a vendor search
   API), `browser` (Playwright, for client-rendered SPAs — the expensive last resort).
-- **Source configs (data)** say where things are on *one* site: start URLs, pagination, card
+- **Source configs (data)** say where things are on _one_ site: start URLs, pagination, card
   selector, and a field map. Each field is an extractor or an ordered fallback chain:
 
 ```jsonc
@@ -98,7 +151,7 @@ Only a new driver or transform ships code.
 Every run writes `summary.json`: site-reported total vs discovered (coverage), field fill rates,
 invalid/detail-failure rates, warning buckets, HTTP stats. A run is **healthy** only if coverage
 ≥ 95%, invalid ≤ 2%, detail failures ≤ 5%, no list-page failures, and it wasn't partial.
-Downstream change detection must only mark units *removed* after a healthy run — a broken
+Downstream change detection must only mark units _removed_ after a healthy run — a broken
 scrape must never look like a dealer selling its whole lot.
 
 Failure handling: a failed list page marks the run unhealthy; a failed detail page degrades
@@ -106,13 +159,13 @@ the unit to list-only data (still proves existence, price, availability) rather 
 
 ## Platform survey (Nov 2026)
 
-| Dealer | Platform / rendering | Implication |
-|---|---|---|
-| Transwest | Agency build, Laravel Livewire, SSR; data-* attrs + JSON-LD | `html` driver |
+| Dealer                                 | Platform / rendering                                               | Implication                        |
+| -------------------------------------- | ------------------------------------------------------------------ | ---------------------------------- |
+| Transwest                              | Agency build, Laravel Livewire, SSR; data-\* attrs + JSON-LD       | `html` driver                      |
 | Fyda Freightliner, Worldwide Equipment | **Dealer Spike** (shared `/inventory/v1/`, `--xNewInventory` URLs) | one config template → many dealers |
-| Premier Truck Group | Next.js + RideMotive inventory API | `json-api` driver candidate |
-| Rush Truck Centers | Custom, JSON-LD present | `html` driver |
-| MHC Kenworth | Sitecore | `html` driver |
+| Premier Truck Group                    | Next.js + RideMotive inventory API                                 | `json-api` driver candidate        |
+| Rush Truck Centers                     | Custom, JSON-LD present                                            | `html` driver                      |
+| MHC Kenworth                           | Sitecore                                                           | `html` driver                      |
 
 Takeaway: a long tail of custom sites, but a meaningful share sits on a handful of dealer
 platforms, where one config template covers every dealer on that platform.
@@ -134,7 +187,7 @@ DB integration tests (`packages/db/test`) run when `TEST_DATABASE_URL` points at
 
 ## Testing inventory changes without waiting a night
 
-The **scenario suite** drives the *whole* pipeline (HTTP → extract → normalize → persist → apply)
+The **scenario suite** drives the _whole_ pipeline (HTTP → extract → normalize → persist → apply)
 against a fake dealer website, so each kind of overnight change is a test that runs in about 100 ms.
 
 - **`@trnsact/testkit` `MockDealer`**: a localhost server rendering Transwest-shaped markup (card
@@ -152,26 +205,26 @@ against a fake dealer website, so each kind of overnight change is a test that r
   one alone with `pnpm test:scenarios -t "price cut"`.
 
 ```ts
-scenario('price cut → PRICE_CHANGED only', async (s) => {
-  await s.night();                                   // baseline
-  s.site.update('MK0001', { price: 58_000 });        // dealer edits the listing
-  const night = await s.night();                     // crawl + apply, one day later
-  expect(night.types).toEqual({ MK0001: ['PRICE_CHANGED'] });
+scenario("price cut → PRICE_CHANGED only", async (s) => {
+  await s.night(); // baseline
+  s.site.update("MK0001", { price: 58_000 }); // dealer edits the listing
+  const night = await s.night(); // crawl + apply, one day later
+  expect(night.types).toEqual({ MK0001: ["PRICE_CHANGED"] });
 });
 ```
 
-| Inventory changes (`inventory-changes.test.ts`) | Resilience (`resilience.test.ts`) |
-|---|---|
-| first crawl → all `NEW`, healthy | list page 500s all night → unhealthy, nothing removed (3 nights) |
-| identical re-crawl, re-signed images → no events | transient 429/503 → retried, no events |
-| price cut → `PRICE_CHANGED` only, point-in-time price | detail page down → list data kept, **no phantom changes** |
-| price hidden / revealed (`null`, not $0) | new unit with detail down → backfilled quietly next night |
-| available → pending → sold, with history ranges | `--no-detail` run → price/availability still tracked |
-| spec edit + mileage → field-level `DETAILS_CHANGED` | site redesign (0 cards) → unhealthy, no mass removal |
-| photo added / removed / reordered → `MEDIA_CHANGED` | `--limit` partial runs never remove |
-| new listing shifts pagination → only `NEW` | pagination stops at the site total, no duplicates |
-| missing → grace → `REMOVED` → `RELISTED` | configured User-Agent on every request |
-| stock # re-keyed, same platform id → `DETAILS_CHANGED` | |
+| Inventory changes (`inventory-changes.test.ts`)        | Resilience (`resilience.test.ts`)                                |
+| ------------------------------------------------------ | ---------------------------------------------------------------- |
+| first crawl → all `NEW`, healthy                       | list page 500s all night → unhealthy, nothing removed (3 nights) |
+| identical re-crawl, re-signed images → no events       | transient 429/503 → retried, no events                           |
+| price cut → `PRICE_CHANGED` only, point-in-time price  | detail page down → list data kept, **no phantom changes**        |
+| price hidden / revealed (`null`, not $0)               | new unit with detail down → backfilled quietly next night        |
+| available → pending → sold, with history ranges        | `--no-detail` run → price/availability still tracked             |
+| spec edit + mileage → field-level `DETAILS_CHANGED`    | site redesign (0 cards) → unhealthy, no mass removal             |
+| photo added / removed / reordered → `MEDIA_CHANGED`    | `--limit` partial runs never remove                              |
+| new listing shifts pagination → only `NEW`             | pagination stops at the site total, no duplicates                |
+| missing → grace → `REMOVED` → `RELISTED`               | configured User-Agent on every request                           |
+| stock # re-keyed, same platform id → `DETAILS_CHANGED` |                                                                  |
 
 **Bug this caught:** a failed detail page used to stage the unit with empty specs and media.
 The next apply then reported `DETAILS_CHANGED` and "all photos removed", and wiped stored
