@@ -10,10 +10,17 @@ Nightly scraper for commercial truck / equipment dealer inventory. Built for one
 corepack enable          # provides pnpm 9 (pinned in package.json)
 pnpm install
 pnpm test                # unit tests + offline fixture contract tests
-pnpm crawl transwest     # full live crawl → .output/transwest/<runId>/
+
+cp .env.example .env     # DATABASE_URL for the compose Postgres
+pnpm db:up               # Postgres 16 in Docker (or point DATABASE_URL at any PG 14+)
+pnpm crawl transwest     # live crawl → .output/transwest/<runId>/ → persisted + change-detected
+
+# See every change type without waiting a night (wipes the DB):
+pnpm demo:changes .output/transwest/<runId> --reset
 ```
 
-Useful flags: `--max-pages 1 --limit 5` (quick partial run), `--no-detail` (list pages only).
+Useful flags: `--max-pages 1 --limit 5` (quick partial run), `--no-detail` (list pages only),
+`--no-persist` (skip the DB).
 
 | Command | What it does |
 |---|---|
@@ -21,6 +28,9 @@ Useful flags: `--max-pages 1 --limit 5` (quick partial run), `--no-detail` (list
 | `pnpm probe <id> [--limit N]` | Live check while authoring a config — prints normalized units, writes nothing |
 | `pnpm sources:list` / `sources:validate` | List / validate all source configs (validate exits non-zero → CI gate) |
 | `pnpm fixtures:capture <id>` | Save list page 1 + one detail page as offline test fixtures |
+| `pnpm import <runDir>` | Persist a saved run directory into the DB |
+| `pnpm demo:changes <runDir> --reset` | Replay a real crawl as 4 scripted nights (changes, broken scrape, removal, relist) |
+| `pnpm db:migrate` / `db:reset` | Apply SQL migrations / drop and re-create (local) |
 
 ## Layout
 
@@ -29,14 +39,16 @@ packages/
   core/      Contracts: canonical Unit schema, declarative SourceConfig schema, logger
   http/      Polite HTTP client: per-source rate limit, concurrency cap, retry/backoff, Retry-After
   extract/   Generic engine: extractor interpreter, JSON-LD + spec-table parsing, drivers, normalizer
+  db/        Plain-SQL migrations, staging, and the set-based change-detection apply (applyRun)
 apps/
-  crawler/   CLI + run pipeline (discover → detail → normalize → validate → output + run summary)
+  crawler/   CLI + run pipeline (discover → detail → normalize → validate → output → persist)
 sources/
   <id>.json              One declarative config per dealer site
   fixtures/<id>/         Saved pages + manifest.json expectations for the contract test
 ```
 
-Dependencies flow one way: `crawler → extract → http → core`. Sources contain no code.
+Dependencies flow one way: `crawler → extract → http → core`, `crawler → db → core`. Sources
+contain no code.
 
 ## How the generic system works
 
@@ -101,7 +113,29 @@ the unit to list-only data (still proves existence, price, availability) rather 
 Takeaway: a long tail of custom sites, but a meaningful share sits on a handful of dealer
 platforms, where one config template covers every dealer on that platform.
 
+## Change detection
+
+Design and trade-offs: [docs/change-detection-plan.md](docs/change-detection-plan.md). In short:
+each unit gets per-facet sha256 hashes (details / price / media; availability compared directly),
+the run is bulk-staged, and one transaction of set-based SQL emits `NEW`, `RELISTED`,
+`PRICE_CHANGED`, `AVAILABILITY_CHANGED`, `DETAILS_CHANGED`, `MEDIA_CHANGED` and `REMOVED`
+events, plus `tstzrange` price/availability history and snapshots. Removal only happens on
+healthy, complete runs, after a grace period (2 runs).
+
+Demo output from the real Transwest crawl (`pnpm demo:changes`):
+
+```
+night 0  real crawl, 356 units         → NEW=356
+night 1  scripted changes               → NEW=1 PRICE_CHANGED=4 AVAILABILITY_CHANGED=3
+                                          DETAILS_CHANGED=2 MEDIA_CHANGED=2 | 3 missing, within grace
+night 2  BROKEN scrape (10 units)       → no changes | removal check skipped (unhealthy)
+night 3  vanished units miss 2nd run    → REMOVED=3
+night 4  one unit reposted              → RELISTED=1
+```
+
+DB integration tests (`packages/db/test`) run when `TEST_DATABASE_URL` points at a throwaway DB.
+
 ## Not built yet
 
-Persistence + change detection (DB schema, run-over-run diffing), media download/hashing, and
-the AWS deployment.
+Media download/hashing (schema ready: `media_assets`, `unit_media.asset_id IS NULL` as the work
+queue), data export, the AWS deployment, and skipping detail fetches for unchanged units.

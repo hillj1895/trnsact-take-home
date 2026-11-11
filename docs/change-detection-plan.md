@@ -1,6 +1,13 @@
 # Change detection — plan of attack
 
-Status: **draft for review**. Schema: [`packages/db/migrations/0001_init.sql`](../packages/db/migrations/0001_init.sql)
+Status: **approved and implemented** (`packages/db/src/apply.ts`, tests in `packages/db/test`).
+Implementation notes vs. this plan:
+- Staging uses one multi-row `INSERT … SELECT unnest(...)` per 500 units (no extra dependency); `COPY` is the production upgrade.
+- Spec labels that repeat a tracked facet (Transwest: "List Price", "Status") are excluded from the details hash via the per-source `detail.hashIgnoreSpecs` config, so one price cut fires only `PRICE_CHANGED`.
+- `DETAILS_CHANGED` payloads flatten specs (`details_doc()`, migration 0002), e.g. `{"spec:Exterior Color": {"old": "Blue", "new": "Red"}}`.
+- Removal closes open price/availability ranges at the run that confirms removal.
+
+Schema: [`packages/db/migrations/0001_init.sql`](../packages/db/migrations/0001_init.sql)
 (applied and constraint-tested against a local Postgres 14).
 
 ## The problem
