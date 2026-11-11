@@ -4,15 +4,32 @@ import { parseArgs } from 'node:util';
 import { createLogger, type SourceConfig } from '@trnsact/core';
 import { getDriver, normalizeUnit, parseListPage } from '@trnsact/extract';
 import { HttpClient } from '@trnsact/http';
+import { createPool, migrate, resetDatabase, type ApplyStats } from '@trnsact/db';
 import { FileConfigStore } from './config-store.js';
-import { OUTPUT_DIR, SOURCES_DIR } from './paths.js';
+import { runChangeDemo } from './demo.js';
+import { OUTPUT_DIR, REPO_ROOT, SOURCES_DIR } from './paths.js';
+import { loadRunDir, persistRun } from './persist.js';
 import { crawlSource } from './run.js';
+
+// Load .env from the repo root if present (DATABASE_URL etc.).
+try {
+  process.loadEnvFile(path.join(REPO_ROOT, '.env'));
+} catch {
+  /* no .env — rely on the real environment */
+}
 
 const USAGE = `
 Usage: pnpm <script> [args]
 
-  crawl <sourceId|all> [--max-pages N] [--limit N] [--no-detail] [--out DIR]
-      Run a full crawl for one source (or every enabled source).
+  crawl <sourceId|all> [--max-pages N] [--limit N] [--no-detail] [--out DIR] [--no-persist]
+      Run a full crawl for one source (or every enabled source). When DATABASE_URL is set,
+      the run is persisted and change-detected (unless --no-persist).
+
+  import <runDir>                   Persist a saved run directory (summary.json + units.ndjson).
+  demo:changes <runDir> [--reset]   Replay a real run as 4 scripted "nights" to exercise every
+                                    change event. Needs an empty DB (--reset wipes it).
+  db:migrate                        Apply pending SQL migrations.
+  db:reset                          Drop and re-create the schema (local only).
 
   probe <sourceId> [--limit N]
       Live check while authoring a config: fetch list page 1 and N detail pages,
@@ -30,6 +47,8 @@ async function main() {
       'max-pages': { type: 'string' },
       limit: { type: 'string' },
       'no-detail': { type: 'boolean', default: false },
+      'no-persist': { type: 'boolean', default: false },
+      reset: { type: 'boolean', default: false },
       out: { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -51,24 +70,77 @@ async function main() {
         arg === 'all'
           ? (await store.list()).flatMap((c) => (c.config?.enabled ? [c.config] : []))
           : [await store.get(arg)];
+      const db = process.env.DATABASE_URL && !values['no-persist'] ? createPool() : undefined;
+      if (db) await migrate(db);
       let failed = 0;
-      for (const config of configs) {
-        try {
-          const summary = await crawlSource(config, {
-            outDir: values.out ?? OUTPUT_DIR,
-            logger,
-            maxPages: int(values['max-pages']),
-            limit: int(values.limit),
-            detail: !values['no-detail'],
-          });
-          printSummary(summary);
-        } catch (err) {
-          // One dealer failing must never stop the others.
-          failed++;
-          logger.error('run.crashed', { sourceId: config.id, error: (err as Error).stack });
+      try {
+        for (const config of configs) {
+          try {
+            const { summary, units } = await crawlSource(config, {
+              outDir: values.out ?? OUTPUT_DIR,
+              logger,
+              maxPages: int(values['max-pages']),
+              limit: int(values.limit),
+              detail: !values['no-detail'],
+            });
+            printSummary(summary);
+            if (db) printApply(await persistRun(db, config, summary, units));
+          } catch (err) {
+            // One dealer failing must never stop the others.
+            failed++;
+            logger.error('run.crashed', { sourceId: config.id, error: (err as Error).stack });
+          }
         }
+      } finally {
+        await db?.end();
       }
       process.exitCode = failed ? 1 : 0;
+      return;
+    }
+
+    case 'import': {
+      if (!arg) throw new Error('import: missing <runDir>');
+      const db = createPool();
+      try {
+        await migrate(db);
+        const run = await loadRunDir(path.resolve(arg));
+        printApply(await persistRun(db, await store.get(run.summary.sourceId), run.summary, run.units));
+      } finally {
+        await db.end();
+      }
+      return;
+    }
+
+    case 'demo:changes': {
+      if (!arg) throw new Error('demo:changes: missing <runDir> (a saved full crawl, e.g. .output/transwest/<runId>)');
+      const db = createPool();
+      try {
+        if (values.reset) await resetDatabase(db);
+        else await migrate(db);
+        const existing = await db.query('SELECT count(*)::int AS n FROM crawl_runs');
+        if (existing.rows[0].n > 0) throw new Error('demo:changes needs an empty database — re-run with --reset');
+        const base = await loadRunDir(path.resolve(arg));
+        const config = await store.get(base.summary.sourceId);
+        process.stdout.write(`\nNight 0: real crawl ${base.summary.runId} (${base.units.length} units)\n`);
+        for (const n of await runChangeDemo(db, config, base)) {
+          process.stdout.write(`\n${n.runId}\n  ${n.label}\n${n.mutations.map((m) => `    - ${m}`).join('\n')}\n`);
+          printApply(n.stats);
+        }
+      } finally {
+        await db.end();
+      }
+      return;
+    }
+
+    case 'db:migrate':
+    case 'db:reset': {
+      const db = createPool();
+      try {
+        const applied = command === 'db:reset' ? await resetDatabase(db) : await migrate(db);
+        process.stdout.write(applied.length ? `Applied: ${applied.join(', ')}\n` : 'Up to date.\n');
+      } finally {
+        await db.end();
+      }
       return;
     }
 
@@ -152,7 +224,20 @@ async function captureFixtures(config: SourceConfig, logger: ReturnType<typeof c
   process.stdout.write(`Captured fixtures for ${config.id} → ${dir}\n`);
 }
 
-function printSummary(s: Awaited<ReturnType<typeof crawlSource>>) {
+function printApply(s: ApplyStats) {
+  if (s.skipped) {
+    process.stdout.write(`  db: skipped (${s.skipped})\n`);
+    return;
+  }
+  const events = Object.entries(s.events).map(([k, v]) => `${k}=${v}`).join(' ') || 'no changes';
+  process.stdout.write(
+    `  db: ${s.staged} staged → ${events} | removal check ${s.removalCheck}` +
+      (s.missedUnderGrace ? ` | ${s.missedUnderGrace} missing, within grace` : '') +
+      '\n',
+  );
+}
+
+function printSummary(s: Awaited<ReturnType<typeof crawlSource>>['summary']) {
   const c = s.counts;
   process.stdout.write(
     [

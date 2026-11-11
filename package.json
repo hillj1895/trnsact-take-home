@@ -12,6 +12,11 @@
     "sources:list": "pnpm --filter @trnsact/crawler run cli sources:list",
     "sources:validate": "pnpm --filter @trnsact/crawler run cli sources:validate",
     "fixtures:capture": "pnpm --filter @trnsact/crawler run cli fixtures:capture",
+    "import": "pnpm --filter @trnsact/crawler run cli import",
+    "demo:changes": "pnpm --filter @trnsact/crawler run cli demo:changes",
+    "db:up": "docker compose up -d db",
+    "db:migrate": "pnpm --filter @trnsact/crawler run cli db:migrate",
+    "db:reset": "pnpm --filter @trnsact/crawler run cli db:reset",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test"
   },

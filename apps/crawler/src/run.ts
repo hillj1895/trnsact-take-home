@@ -21,7 +21,12 @@ export interface CrawlOptions {
  * One source, end to end: discover → (detail) → normalize → validate → write.
  * Output is NDJSON + a run summary; persistence/diffing plugs in after normalize.
  */
-export async function crawlSource(config: SourceConfig, opts: CrawlOptions): Promise<RunSummary> {
+export interface CrawlResult {
+  summary: RunSummary;
+  units: Unit[];
+}
+
+export async function crawlSource(config: SourceConfig, opts: CrawlOptions): Promise<CrawlResult> {
   const startedAt = new Date();
   const runId = `${config.id}-${startedAt.toISOString().replace(/[:.]/g, '-')}`;
   const logger = opts.logger.child({ runId, sourceId: config.id, configVersion: config.version });
@@ -123,7 +128,7 @@ export async function crawlSource(config: SourceConfig, opts: CrawlOptions): Pro
   });
   await writeFile(path.join(runDir, 'summary.json'), JSON.stringify(summary, null, 2));
   logger.info('run.done', { healthy: summary.health.healthy, reasons: summary.health.reasons, units: units.length });
-  return summary;
+  return { summary, units };
 }
 
 async function forEachPool<T>(items: T[], size: number, fn: (item: T) => Promise<void>): Promise<void> {

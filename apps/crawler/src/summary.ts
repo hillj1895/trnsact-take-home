@@ -86,6 +86,7 @@ export function summarize(i: RunSummaryInput) {
     startedAt: i.startedAt.toISOString(),
     finishedAt: i.finishedAt.toISOString(),
     durationMs: i.finishedAt.getTime() - i.startedAt.getTime(),
+    partial: i.partial,
     counts: {
       siteTotal: i.siteTotal,
       discovered: i.discovered,
