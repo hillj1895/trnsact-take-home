@@ -15,8 +15,8 @@ cp .env.example .env     # DATABASE_URL for the compose Postgres
 pnpm db:up               # Postgres 16 in Docker (or point DATABASE_URL at any PG 14+)
 pnpm crawl transwest     # live crawl → .output/transwest/<runId>/ → persisted + change-detected
 
-# See every change type without waiting a night (wipes the DB):
-pnpm demo:changes .output/transwest/<runId> --reset
+# A simulated week on the real inventory → exports/ (wipes the DB):
+pnpm simulate --reset
 ```
 
 Useful flags: `--max-pages 1 --limit 5` (quick partial run), `--no-detail` (list pages only),
@@ -28,8 +28,9 @@ Useful flags: `--max-pages 1 --limit 5` (quick partial run), `--no-detail` (list
 | `pnpm probe <id> [--limit N]` | Live check while authoring a config — prints normalized units, writes nothing |
 | `pnpm sources:list` / `sources:validate` | List / validate all source configs (validate exits non-zero → CI gate) |
 | `pnpm fixtures:capture <id>` | Save list page 1 + one detail page as offline test fixtures |
-| `pnpm import <runDir>` | Persist a saved run directory into the DB |
-| `pnpm demo:changes <runDir> --reset` | Replay a real crawl as 4 scripted nights (changes, broken scrape, removal, relist) |
+| `pnpm db:import <runDir>` | Persist a saved run directory into the DB |
+| `pnpm simulate [runDir] --reset` | Seed the mock dealer with a real crawl, run a scripted week through the full pipeline, export to `exports/` |
+| `pnpm export [sourceId] [--out DIR]` | Export any inventory DB (units, events, price/availability history, media, runs) as CSV + NDJSON |
 | `pnpm db:migrate` / `db:reset` | Apply SQL migrations / drop and re-create (local) |
 | `pnpm test:scenarios [-t name]` | End-to-end change scenarios against the mock dealer (needs `TEST_DATABASE_URL`) |
 | `pnpm mock:serve [port]` | Run the mock dealer site standalone (default :4010) |
@@ -125,24 +126,16 @@ the run is bulk-staged, and one transaction of set-based SQL emits `NEW`, `RELIS
 events, plus `tstzrange` price/availability history and snapshots. Removal only happens on
 healthy, complete runs, after a grace period (2 runs).
 
-Demo output from the real Transwest crawl (`pnpm demo:changes`):
-
-```
-night 0  real crawl, 356 units         → NEW=356
-night 1  scripted changes               → NEW=1 PRICE_CHANGED=4 AVAILABILITY_CHANGED=3
-                                          DETAILS_CHANGED=2 MEDIA_CHANGED=2 | 3 missing, within grace
-night 2  BROKEN scrape (10 units)       → no changes | removal check skipped (unhealthy)
-night 3  vanished units miss 2nd run    → REMOVED=3
-night 4  one unit reposted              → RELISTED=1
-```
+A simulated week on the real inventory (`pnpm simulate`; full results in
+[exports/README.md](exports/README.md)) produces every event type, including a broken-scrape night
+that removes nothing and a flaky night with no false changes.
 
 DB integration tests (`packages/db/test`) run when `TEST_DATABASE_URL` points at a throwaway DB.
 
 ## Testing inventory changes without waiting a night
 
-`demo:changes` replays saved data. The **scenario suite** goes further: it drives the *whole*
-pipeline (HTTP → extract → normalize → persist → apply) against a fake dealer website, so each
-kind of overnight change is a test that runs in about 100 ms.
+The **scenario suite** drives the *whole* pipeline (HTTP → extract → normalize → persist → apply)
+against a fake dealer website, so each kind of overnight change is a test that runs in about 100 ms.
 
 - **`@trnsact/testkit` `MockDealer`**: a localhost server rendering Transwest-shaped markup (card
   `data-*` attributes, the `data-form-attributes` JSON, `wire:key`, the "1 - 10 / 25" total,
@@ -192,7 +185,17 @@ echo 'TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/inventory_te
 pnpm test:scenarios                # ~3s; skipped (not failed) without TEST_DATABASE_URL
 ```
 
+### The data export uses the same machinery
+
+`pnpm simulate --reset` seeds the mock dealer with **every unit from the latest real crawl**: the
+same URL paths, platform ids, specs and photo asset ids. It then runs a scripted week (price cuts,
+pending/sold, photo edits, take-downs and a relist, a flaky night and a broken night) through the
+full pipeline, and exports the database to [`exports/`](exports/). On night 0 it checks that
+crawling the mock reproduces the real crawl, unit for unit. The results and fidelity figures are in
+[exports/README.md](exports/README.md).
+
 ## Not built yet
 
-Media download/hashing (schema ready: `media_assets`, `unit_media.asset_id IS NULL` as the work
-queue), data export, the AWS deployment, and skipping detail fetches for unchanged units.
+Deliberately design-only (covered in the write-up): media download and hashing (the schema is
+ready: `media_assets`, with `unit_media.asset_id IS NULL` as the work queue), the AWS deployment,
+and skipping detail fetches for unchanged units.

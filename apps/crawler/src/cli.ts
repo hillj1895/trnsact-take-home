@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { createLogger, type SourceConfig } from '@trnsact/core';
@@ -6,7 +6,8 @@ import { getDriver, normalizeUnit, parseListPage } from '@trnsact/extract';
 import { HttpClient } from '@trnsact/http';
 import { createPool, migrate, resetDatabase, type ApplyStats } from '@trnsact/db';
 import { FileConfigStore } from './config-store.js';
-import { runChangeDemo } from './demo.js';
+import { exportDatabase } from './export.js';
+import { simulateWeek, writeSimulationReadme } from './simulate.js';
 import { OUTPUT_DIR, REPO_ROOT, SOURCES_DIR } from './paths.js';
 import { loadRunDir, persistRun } from './persist.js';
 import { crawlSource } from './run.js';
@@ -28,8 +29,12 @@ Usage: pnpm <script> [args]
       config at another host (e.g. \`pnpm mock:serve\`) and implies --no-persist.
 
   import <runDir>                   Persist a saved run directory (summary.json + units.ndjson).
-  demo:changes <runDir> [--reset]   Replay a real run as 4 scripted "nights" to exercise every
-                                    change event. Needs an empty DB (--reset wipes it).
+  simulate [runDir] [--reset] [--out DIR]
+      Seed the mock dealer site with a real crawl (default: latest full run), run a scripted
+      week through the full pipeline, and export the DB to DIR (default exports/).
+      Needs an empty DB (--reset wipes it).
+  export [sourceId] [--out DIR]     Export the DB (units, events, price/availability history,
+                                    media, runs) as CSV + NDJSON.
   db:migrate                        Apply pending SQL migrations.
   db:reset                          Drop and re-create the schema (local only).
 
@@ -119,21 +124,51 @@ async function main() {
       return;
     }
 
-    case 'demo:changes': {
-      if (!arg) throw new Error('demo:changes: missing <runDir> (a saved full crawl, e.g. .output/transwest/<runId>)');
+    case 'simulate': {
+      // A simulated week on real inventory → DB → exports/ (the data-export deliverable).
+      const runDir = arg ? path.resolve(arg) : await latestFullRun();
       const db = createPool();
       try {
         if (values.reset) await resetDatabase(db);
         else await migrate(db);
         const existing = await db.query('SELECT count(*)::int AS n FROM crawl_runs');
-        if (existing.rows[0].n > 0) throw new Error('demo:changes needs an empty database — re-run with --reset');
-        const base = await loadRunDir(path.resolve(arg));
+        if (existing.rows[0].n > 0) throw new Error('simulate needs an empty database (it writes a dated history) — re-run with --reset');
+        const base = await loadRunDir(runDir);
         const config = await store.get(base.summary.sourceId);
-        process.stdout.write(`\nNight 0: real crawl ${base.summary.runId} (${base.units.length} units)\n`);
-        for (const n of await runChangeDemo(db, config, base)) {
-          process.stdout.write(`\n${n.runId}\n  ${n.label}\n${n.mutations.map((m) => `    - ${m}`).join('\n')}\n`);
+        const crawled = new Date(base.summary.startedAt);
+        // Seven nights at 02:00 UTC, ending on the night of the real crawl.
+        const start = new Date(Date.UTC(crawled.getUTCFullYear(), crawled.getUTCMonth(), crawled.getUTCDate() - 6, 2));
+        const outDir = path.resolve(values.out ?? path.join(REPO_ROOT, 'exports'));
+        const sim = await simulateWeek(db, config, base.units, { start, logger, outDir: path.join(OUTPUT_DIR, '.simulate') });
+        for (const n of sim.nights) {
+          process.stdout.write(`\nNight ${n.n}  ${n.at.slice(0, 10)}  ${n.label}${n.healthy ? '' : '  [UNHEALTHY]'}\n`);
+          for (const m of n.scripted) process.stdout.write(`    - ${m}\n`);
           printApply(n.stats);
         }
+        const counts = await exportDatabase(db, outDir, { rewrite: { from: sim.origin, to: new URL(config.baseUrl).origin } });
+        await writeSimulationReadme(outDir, { base, nights: sim.nights, fidelity: sim.fidelity, counts });
+        await mkdir(path.join(outDir, 'live-crawl'), { recursive: true });
+        await copyFile(path.join(runDir, 'units.ndjson'), path.join(outDir, 'live-crawl', 'units.ndjson'));
+        await copyFile(path.join(runDir, 'summary.json'), path.join(outDir, 'live-crawl', 'summary.json'));
+        const byField: Record<string, number> = {};
+        for (const m of sim.fidelity.mismatches) for (const f of m.fields) byField[f] = (byField[f] ?? 0) + 1;
+        if (sim.fidelity.mismatches.length) process.stdout.write(`\nFidelity mismatches by field: ${JSON.stringify(byField)}\n`);
+        process.stdout.write(
+          `\nFidelity: ${sim.fidelity.matched}/${sim.fidelity.units} real units reproduced exactly by the mock site\n` +
+            `Exported to ${path.relative(process.cwd(), outDir) || '.'}: ${Object.entries(counts).map(([f, n]) => `${f} (${n})`).join(', ')}\n`,
+        );
+      } finally {
+        await db.end();
+      }
+      return;
+    }
+
+    case 'export': {
+      const db = createPool();
+      try {
+        const outDir = path.resolve(values.out ?? path.join(REPO_ROOT, 'exports'));
+        const counts = await exportDatabase(db, outDir, { sourceId: arg });
+        process.stdout.write(`Exported to ${outDir}: ${Object.entries(counts).map(([f, n]) => `${f} (${n})`).join(', ')}\n`);
       } finally {
         await db.end();
       }
@@ -230,6 +265,26 @@ async function captureFixtures(config: SourceConfig, logger: ReturnType<typeof c
   };
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
   process.stdout.write(`Captured fixtures for ${config.id} → ${dir}\n`);
+}
+
+/** Most recent healthy, complete crawl under .output/ (the simulation's seed). */
+async function latestFullRun(): Promise<string> {
+  const candidates: Array<{ dir: string; startedAt: string }> = [];
+  for (const source of await readdir(OUTPUT_DIR).catch(() => [] as string[])) {
+    if (source.startsWith('.')) continue;
+    for (const run of await readdir(path.join(OUTPUT_DIR, source)).catch(() => [] as string[])) {
+      const dir = path.join(OUTPUT_DIR, source, run);
+      try {
+        const { summary } = await loadRunDir(dir);
+        if (summary.health.healthy && !summary.partial) candidates.push({ dir, startedAt: summary.startedAt });
+      } catch {
+        /* not a run dir */
+      }
+    }
+  }
+  const latest = candidates.sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+  if (!latest) throw new Error('no healthy full crawl under .output/ — run `pnpm crawl transwest` first, or pass <runDir>');
+  return latest.dir;
 }
 
 function printApply(s: ApplyStats) {

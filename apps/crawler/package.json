@@ -13,9 +13,7 @@
     "@trnsact/core": "workspace:*",
     "@trnsact/db": "workspace:*",
     "@trnsact/extract": "workspace:*",
-    "@trnsact/http": "workspace:*"
-  },
-  "devDependencies": {
+    "@trnsact/http": "workspace:*",
     "@trnsact/testkit": "workspace:*"
   }
 }

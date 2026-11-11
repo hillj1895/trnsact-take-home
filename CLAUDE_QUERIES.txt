@@ -50,3 +50,11 @@ Okay for the persistence decisions, I am fine with the first 3 recommendations a
 [8] Scenario testing framework against dummy endpoints
 --------------------------------------------------------------------------------
 Let's table the still open points. I know there was concern about not being able to actually see an overnight change in inventory here because of the time crunch, let’s go ahead and account for that in a testing framework where we can run individual tests against dummy endpoints to make sure our application properly reacts to data changes
+
+[9] Resolve open items; build the data export with the testing framework
+--------------------------------------------------------------------------------
+Okay it seems as though we have the core functionality implemented and tested. As for the "Still Open" section from the previous response, let's do this:
+- Media: don't think storing images is a huge issue at this point, let's add that to design only.
+- AWS: Let's also go design only here as well, but we should speak to that when talking about scaling this to thousands of dealers. We can ideate on this when we get to scaffolding a write-up
+- Let's use our testing framework to create the data export file deliverable
+- Browser User-Agent can just remain in the write up as a production question

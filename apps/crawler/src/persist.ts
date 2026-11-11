@@ -7,7 +7,7 @@ import type { RunSummary } from './summary.js';
 /**
  * Crawl output → database: register source, record the run, stage its units with
  * facet hashes, then apply the set-based diff. Same path for live crawls, imports
- * of saved runs, and the replay demo.
+ * of saved runs, and the simulated week.
  */
 export async function persistRun(db: Pool, config: SourceConfig, summary: RunSummary, units: Unit[]): Promise<ApplyStats> {
   await upsertSource(db, config);

@@ -35,7 +35,6 @@ importers:
       '@trnsact/http':
         specifier: workspace:*
         version: link:../../packages/http
-    devDependencies:
       '@trnsact/testkit':
         specifier: workspace:*
         version: link:../../packages/testkit
@@ -80,7 +79,11 @@ importers:
         specifier: workspace:*
         version: link:../core
 
-  packages/testkit: {}
+  packages/testkit:
+    dependencies:
+      '@trnsact/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 
