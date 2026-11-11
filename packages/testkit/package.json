@@ -9,5 +9,8 @@
   "scripts": {
     "serve": "tsx src/serve.ts",
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@trnsact/core": "workspace:*"
   }
 }

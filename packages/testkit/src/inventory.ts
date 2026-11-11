@@ -13,10 +13,18 @@ export interface MockUnit {
   make: string;
   model: string;
   type: string;
-  condition: 'New' | 'Used';
+  /** As shown in the spec table ("New", "Used", ...). */
+  condition: string;
   mileage?: number;
-  /** null renders as "Contact For Price". */
+  /** null renders as "Contact For Price" (and the "List Price" spec row is omitted, as on the real site). */
   price: number | null;
+  msrp?: number | null;
+  /**
+   * What the list card's price field shows, when it isn't simply the price. The real
+   * site shows "Contact For Price" / "Coming Soon" for unpriced units and "Sold" /
+   * "Sale Pending" for some priced ones (the detail page still lists the price).
+   */
+  cardPriceText?: string;
   /** As displayed: "Available", "Sale Pending", "Sold", "Rental", ... */
   status: string;
   location: string;
@@ -24,6 +32,14 @@ export interface MockUnit {
   images: string[];
   /** Extra spec rows beyond the standard ones. */
   specs: Record<string, string>;
+  /** Card title override (real titles include the submodel). Default: "<year> <make> <model>". */
+  title?: string;
+  submodel?: string;
+  /** Detail page path override (e.g. the real site's URL). Default: generated from the unit. */
+  path?: string;
+  /** Override for `data-product-is-sold` / `-is-rental` (default: derived from `status`). */
+  isSold?: boolean;
+  isRental?: boolean;
 }
 
 const MAKES: Array<[make: string, model: string, type: string]> = [

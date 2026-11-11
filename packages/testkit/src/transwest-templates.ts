@@ -24,17 +24,21 @@ const esc = (s: string) =>
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 const usd = (n: number) => `$${n.toLocaleString('en-US')}`;
 
-export const priceText = (u: MockUnit) => (u.price === null ? 'Contact For Price' : usd(u.price));
-export const title = (u: MockUnit) => `${u.year} ${u.make} ${u.model}`;
+/** Price as shown on the list card. */
+export const priceText = (u: MockUnit) => u.cardPriceText ?? (u.price === null ? 'Contact For Price' : usd(u.price));
+export const title = (u: MockUnit) => u.title ?? `${u.year} ${u.make} ${u.model}`;
 
 /** Detail URL path. Embeds the stock number, so a re-keyed unit moves to a new URL (as on the real site). */
 export function detailPath(u: MockUnit): string {
+  if (u.path) return u.path;
   const store = slug(u.location.replace(/^Transwest of /, '')) + '-commercial-trucks-and-trailers';
   return `/${u.group}/type/${slug(u.type)}/store/${store}/${slug(`${u.condition} ${title(u)} ${u.stockNumber}`)}/`;
 }
 
 export function imageUrl(baseUrl: string, assetId: string, ctx: RenderContext): string {
-  return `${baseUrl}/img/secure/inventory/images/${assetId}.webp?s=${ctx.imageSignature}`;
+  // Asset ids from real crawls already carry their extension.
+  const file = assetId.includes('.') ? assetId : `${assetId}.webp`;
+  return `${baseUrl}/img/secure/inventory/images/${file}?s=${ctx.imageSignature}`;
 }
 
 export function renderListPage(
@@ -65,7 +69,7 @@ function card(u: MockUnit, i: number): string {
     model: u.model,
     status: u.status,
     stock_id: u.stockNumber,
-    submodel: '',
+    submodel: u.submodel ?? '',
     vehicle_type: u.type,
     vin: u.vin,
     year: String(u.year),
@@ -78,10 +82,10 @@ function card(u: MockUnit, i: number): string {
     data-product-url="${esc(detailPath(u))}"
     data-product-title="${esc(title(u))} "
     data-product-price="${esc(priceText(u))}"
-    data-product-msrp=""
+    data-product-msrp="${u.msrp ? esc(usd(u.msrp)) : ''}"
     data-product-location="${esc(u.location)}"
-    data-product-is-rental="${u.status === 'Rental'}"
-    data-product-is-sold="${u.status === 'Sold'}"
+    data-product-is-rental="${u.isRental ?? u.status === 'Rental'}"
+    data-product-is-sold="${u.isSold ?? u.status === 'Sold'}"
     data-form-attributes="${esc(JSON.stringify(form))}"
     wire:key="product-${u.id}-${i}" wire:ignore=""
   ><h3>${esc(title(u))}</h3></li>`;
@@ -116,7 +120,7 @@ export function renderDetailPage(baseUrl: string, u: MockUnit, ctx: RenderContex
     ['Model', u.model],
     ['Stock ID', u.stockNumber],
     ['VIN (Last 6)', u.vin.slice(-6)],
-    ['List Price', priceText(u)],
+    ...(u.price !== null ? [['List Price', usd(u.price)] as [string, string]] : []),
     ['Status', u.status],
     ['Condition', u.condition],
     ...(u.mileage !== undefined ? [['Mileage', u.mileage.toLocaleString('en-US')] as [string, string]] : []),
