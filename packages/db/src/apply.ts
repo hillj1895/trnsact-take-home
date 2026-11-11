@@ -107,7 +107,7 @@ export async function applyRun(pool: pg.Pool, runId: string): Promise<ApplyStats
        SELECT s.source_unit_key, s.data, s.details_hash, s.price_hash, s.media_hash,
               s.availability, s.data->>'availabilityRaw',
               u.id, u.status, u.data, u.details_hash, u.price_hash, u.media_hash,
-              u.availability, u.data->>'availabilityRaw', u.price_amount, u.msrp, u.price_text
+              u.availability, u.data->>'availabilityRaw', trim_scale(u.price_amount), trim_scale(u.msrp), u.price_text
        FROM staged_units s
        LEFT JOIN units u ON u.source_id = $2 AND u.source_unit_key = s.source_unit_key
        WHERE s.run_id = $1`,
