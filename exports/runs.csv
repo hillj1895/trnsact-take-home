@@ -1,0 +1,8 @@
+run_id,source_id,config_version,started_at,finished_at,healthy,partial,site_total,discovered,detail_failed,http_requests,health_reasons,events,removal_check
+transwest-2026-11-05T02-00-00-000Z,transwest,3,2026-11-05T02:00:00.000Z,2026-11-05T02:00:00.820Z,true,false,356,356,0,376,[],"{""NEW"":356}",applied
+transwest-2026-11-06T02-00-00-000Z,transwest,3,2026-11-06T02:00:00.000Z,2026-11-06T02:00:00.753Z,true,false,357,357,0,377,[],"{""NEW"":1,""PRICE_CHANGED"":4,""AVAILABILITY_CHANGED"":2}",applied
+transwest-2026-11-07T02-00-00-000Z,transwest,3,2026-11-07T02:00:00.000Z,2026-11-07T02:00:00.746Z,true,false,354,354,0,374,[],"{""MEDIA_CHANGED"":2,""PRICE_CHANGED"":1,""DETAILS_CHANGED"":1,""AVAILABILITY_CHANGED"":2}",applied
+transwest-2026-11-08T02-00-00-000Z,transwest,3,2026-11-08T02:00:00.000Z,2026-11-08T02:00:00.767Z,true,false,354,354,4,383,[],"{""REMOVED"":3,""PRICE_CHANGED"":1}",applied
+transwest-2026-11-09T02-00-00-000Z,transwest,3,2026-11-09T02:00:00.000Z,2026-11-09T02:00:00.084Z,false,false,330,38,0,43,"[""list page failure (inventory view incomplete)"",""coverage 0.115 < 0.95""]","{""PRICE_CHANGED"":1}",skipped (unhealthy or partial run)
+transwest-2026-11-10T02-00-00-000Z,transwest,3,2026-11-10T02:00:00.000Z,2026-11-10T02:00:00.753Z,true,false,357,357,0,377,[],"{""NEW"":2,""RELISTED"":1,""PRICE_CHANGED"":1,""DETAILS_CHANGED"":1}",applied
+transwest-2026-11-11T02-00-00-000Z,transwest,3,2026-11-11T02:00:00.000Z,2026-11-11T02:00:00.751Z,true,false,356,356,0,376,[],"{""PRICE_CHANGED"":3,""AVAILABILITY_CHANGED"":2}",applied

@@ -1,0 +1,67 @@
+{
+  "runId": "transwest-2026-11-11T04-20-54-254Z",
+  "sourceId": "transwest",
+  "dealerId": "transwest",
+  "configVersion": 3,
+  "driver": "html",
+  "startedAt": "2026-11-11T04:20:54.254Z",
+  "finishedAt": "2026-11-11T04:27:14.019Z",
+  "durationMs": 379765,
+  "partial": false,
+  "counts": {
+    "siteTotal": 356,
+    "discovered": 356,
+    "duplicateKeys": 0,
+    "listPages": 20,
+    "processed": 356,
+    "valid": 356,
+    "invalid": 0,
+    "detailFailed": 0,
+    "images": 5501,
+    "videos": 0,
+    "documents": 0
+  },
+  "availability": {
+    "available": 298,
+    "on_order": 12,
+    "sold": 46
+  },
+  "health": {
+    "healthy": true,
+    "coverage": 1,
+    "invalidRate": 0,
+    "detailFailRate": 0,
+    "reasons": []
+  },
+  "fillRates": {
+    "stockNumber": 1,
+    "vin": 1,
+    "year": 1,
+    "make": 1,
+    "model": 1,
+    "category": 1,
+    "mileage": 0.837,
+    "hours": 0,
+    "location": 1,
+    "availabilityRaw": 1,
+    "price": 0.514,
+    "knownAvailability": 1,
+    "knownCondition": 1,
+    "hasImages": 0.919,
+    "hasSpecs": 1
+  },
+  "warningCounts": {
+    "detail.condition: sources disagree, using \"…\" over \"…\"": 208,
+    "VIN \"…\" is not a valid 17-char VIN": 2
+  },
+  "http": {
+    "requests": 376,
+    "retries": 0,
+    "failures": 0,
+    "bytes": 210851846,
+    "byStatus": {
+      "200": 376
+    }
+  },
+  "outputDir": "/Users/josephhill/Source/trnsact/trnsact-take-home/.output/transwest/transwest-2026-11-11T04-20-54-254Z"
+}
