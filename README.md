@@ -20,7 +20,7 @@ pnpm demo:changes .output/transwest/<runId> --reset
 ```
 
 Useful flags: `--max-pages 1 --limit 5` (quick partial run), `--no-detail` (list pages only),
-`--no-persist` (skip the DB).
+`--no-persist` (skip the DB), `--base-url URL` (same config, another host, e.g. the mock dealer).
 
 | Command | What it does |
 |---|---|
@@ -31,6 +31,8 @@ Useful flags: `--max-pages 1 --limit 5` (quick partial run), `--no-detail` (list
 | `pnpm import <runDir>` | Persist a saved run directory into the DB |
 | `pnpm demo:changes <runDir> --reset` | Replay a real crawl as 4 scripted nights (changes, broken scrape, removal, relist) |
 | `pnpm db:migrate` / `db:reset` | Apply SQL migrations / drop and re-create (local) |
+| `pnpm test:scenarios [-t name]` | End-to-end change scenarios against the mock dealer (needs `TEST_DATABASE_URL`) |
+| `pnpm mock:serve [port]` | Run the mock dealer site standalone (default :4010) |
 
 ## Layout
 
@@ -40,6 +42,7 @@ packages/
   http/      Polite HTTP client: per-source rate limit, concurrency cap, retry/backoff, Retry-After
   extract/   Generic engine: extractor interpreter, JSON-LD + spec-table parsing, drivers, normalizer
   db/        Plain-SQL migrations, staging, and the set-based change-detection apply (applyRun)
+  testkit/   Mock dealer website (Transwest-shaped HTML, mutable inventory, fault injection)
 apps/
   crawler/   CLI + run pipeline (discover → detail → normalize → validate → output → persist)
 sources/
@@ -48,7 +51,7 @@ sources/
 ```
 
 Dependencies flow one way: `crawler → extract → http → core`, `crawler → db → core`. Sources
-contain no code.
+contain no code. `testkit` is a dev-only dependency of the crawler's tests.
 
 ## How the generic system works
 
@@ -134,6 +137,60 @@ night 4  one unit reposted              → RELISTED=1
 ```
 
 DB integration tests (`packages/db/test`) run when `TEST_DATABASE_URL` points at a throwaway DB.
+
+## Testing inventory changes without waiting a night
+
+`demo:changes` replays saved data. The **scenario suite** goes further: it drives the *whole*
+pipeline (HTTP → extract → normalize → persist → apply) against a fake dealer website, so each
+kind of overnight change is a test that runs in about 100 ms.
+
+- **`@trnsact/testkit` `MockDealer`**: a localhost server rendering Transwest-shaped markup (card
+  `data-*` attributes, the `data-form-attributes` JSON, `wire:key`, the "1 - 10 / 25" total,
+  Vehicle JSON-LD with the real `NewCondition` bug, the spec list) from an in-memory inventory.
+  Tests mutate it (`site.update('MK0001', { price: 58_000 })`, `remove`, `add`) and inject
+  faults (`failListPage(2)`, `failDetail('MK0012', { status: 503, times: 2 })`,
+  `layout = 'redesign'`, a server that repeats page 1 for out-of-range pages). Image URLs
+  are re-signed every night, like the real CDN.
+- **The real config**: scenarios load `sources/transwest.json` and swap only `baseUrl` and the
+  rate limit, so they exercise the production extraction rules, not a test copy.
+- **Simulated clock**: `crawlSource({ now })`. Each `s.night()` runs one day later, so price
+  history and point-in-time queries behave as they would in production.
+- **Isolation**: every scenario gets its own site, source id and output dir, so you can run any
+  one alone with `pnpm test:scenarios -t "price cut"`.
+
+```ts
+scenario('price cut → PRICE_CHANGED only', async (s) => {
+  await s.night();                                   // baseline
+  s.site.update('MK0001', { price: 58_000 });        // dealer edits the listing
+  const night = await s.night();                     // crawl + apply, one day later
+  expect(night.types).toEqual({ MK0001: ['PRICE_CHANGED'] });
+});
+```
+
+| Inventory changes (`inventory-changes.test.ts`) | Resilience (`resilience.test.ts`) |
+|---|---|
+| first crawl → all `NEW`, healthy | list page 500s all night → unhealthy, nothing removed (3 nights) |
+| identical re-crawl, re-signed images → no events | transient 429/503 → retried, no events |
+| price cut → `PRICE_CHANGED` only, point-in-time price | detail page down → list data kept, **no phantom changes** |
+| price hidden / revealed (`null`, not $0) | new unit with detail down → backfilled quietly next night |
+| available → pending → sold, with history ranges | `--no-detail` run → price/availability still tracked |
+| spec edit + mileage → field-level `DETAILS_CHANGED` | site redesign (0 cards) → unhealthy, no mass removal |
+| photo added / removed / reordered → `MEDIA_CHANGED` | `--limit` partial runs never remove |
+| new listing shifts pagination → only `NEW` | pagination stops at the site total, no duplicates |
+| missing → grace → `REMOVED` → `RELISTED` | configured User-Agent on every request |
+| stock # re-keyed, same platform id → `DETAILS_CHANGED` | |
+
+**Bug this caught:** a failed detail page used to stage the unit with empty specs and media.
+The next apply then reported `DETAILS_CHANGED` and "all photos removed", and wiped stored
+media. Units now carry `detailStatus` (`ok` / `failed` / `skipped`). `applyRun` diffs only the
+facets a run actually observed, and treats a unit's first complete observation as a backfill,
+not a change.
+
+```bash
+createdb inventory_test            # any throwaway PG 14+ database
+echo 'TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/inventory_test' >> .env
+pnpm test:scenarios                # ~3s; skipped (not failed) without TEST_DATABASE_URL
+```
 
 ## Not built yet
 

@@ -22,8 +22,10 @@ const USAGE = `
 Usage: pnpm <script> [args]
 
   crawl <sourceId|all> [--max-pages N] [--limit N] [--no-detail] [--out DIR] [--no-persist]
+                        [--base-url URL]
       Run a full crawl for one source (or every enabled source). When DATABASE_URL is set,
-      the run is persisted and change-detected (unless --no-persist).
+      the run is persisted and change-detected (unless --no-persist). --base-url points the
+      config at another host (e.g. \`pnpm mock:serve\`) and implies --no-persist.
 
   import <runDir>                   Persist a saved run directory (summary.json + units.ndjson).
   demo:changes <runDir> [--reset]   Replay a real run as 4 scripted "nights" to exercise every
@@ -31,7 +33,7 @@ Usage: pnpm <script> [args]
   db:migrate                        Apply pending SQL migrations.
   db:reset                          Drop and re-create the schema (local only).
 
-  probe <sourceId> [--limit N]
+  probe <sourceId> [--limit N] [--base-url URL]
       Live check while authoring a config: fetch list page 1 and N detail pages,
       print normalized units to stdout. Writes nothing.
 
@@ -50,6 +52,7 @@ async function main() {
       'no-persist': { type: 'boolean', default: false },
       reset: { type: 'boolean', default: false },
       out: { type: 'string' },
+      'base-url': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -57,6 +60,8 @@ async function main() {
   const store = new FileConfigStore(SOURCES_DIR);
   const logger = createLogger({ app: 'crawler' });
   const int = (v?: string) => (v === undefined ? undefined : Number.parseInt(v, 10));
+  // Same config, different host: crawl the mock dealer (or a staging mirror) without editing JSON.
+  const rebase = (c: SourceConfig): SourceConfig => (values['base-url'] ? { ...c, baseUrl: values['base-url'] } : c);
 
   if (!command || values.help) {
     process.stdout.write(USAGE);
@@ -66,11 +71,14 @@ async function main() {
   switch (command) {
     case 'crawl': {
       if (!arg) throw new Error('crawl: missing <sourceId|all>');
-      const configs =
+      const configs = (
         arg === 'all'
           ? (await store.list()).flatMap((c) => (c.config?.enabled ? [c.config] : []))
-          : [await store.get(arg)];
-      const db = process.env.DATABASE_URL && !values['no-persist'] ? createPool() : undefined;
+          : [await store.get(arg)]
+      ).map(rebase);
+      // A rebased crawl must never write into the real source's history.
+      const persist = !values['no-persist'] && !values['base-url'];
+      const db = process.env.DATABASE_URL && persist ? createPool() : undefined;
       if (db) await migrate(db);
       let failed = 0;
       try {
@@ -146,7 +154,7 @@ async function main() {
 
     case 'probe': {
       if (!arg) throw new Error('probe: missing <sourceId>');
-      const config = await store.get(arg);
+      const config = rebase(await store.get(arg));
       const http = new HttpClient({ ...config.http, logger });
       const driver = getDriver(config.driver);
       const ctx = { config, http, logger };

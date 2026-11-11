@@ -46,3 +46,7 @@ Sorry I think I may have moved on past some past decisions in the past chats, ca
 [7] Approve persistence decisions
 --------------------------------------------------------------------------------
 Okay for the persistence decisions, I am fine with the first 3 recommendations and the schema and change detections plans. We can continue to ideate on the remaining items after that is complete
+
+[8] Scenario testing framework against dummy endpoints
+--------------------------------------------------------------------------------
+Let's table the still open points. I know there was concern about not being able to actually see an overnight change in inventory here because of the time crunch, let’s go ahead and account for that in a testing framework where we can run individual tests against dummy endpoints to make sure our application properly reacts to data changes

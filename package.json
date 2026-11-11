@@ -14,11 +14,13 @@
     "fixtures:capture": "pnpm --filter @trnsact/crawler run cli fixtures:capture",
     "import": "pnpm --filter @trnsact/crawler run cli import",
     "demo:changes": "pnpm --filter @trnsact/crawler run cli demo:changes",
+    "mock:serve": "pnpm --filter @trnsact/testkit run serve",
     "db:up": "docker compose up -d db",
     "db:migrate": "pnpm --filter @trnsact/crawler run cli db:migrate",
     "db:reset": "pnpm --filter @trnsact/crawler run cli db:reset",
     "typecheck": "pnpm -r run typecheck",
-    "test": "pnpm -r run test"
+    "test": "pnpm -r run test",
+    "test:scenarios": "pnpm --filter @trnsact/crawler run test:scenarios"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
