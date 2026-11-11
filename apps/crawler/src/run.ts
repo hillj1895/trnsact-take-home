@@ -15,6 +15,8 @@ export interface CrawlOptions {
   limit?: number;
   /** Fetch detail pages (default true if the config defines detail). */
   detail?: boolean;
+  /** Injectable clock: run start time, and so every event/history timestamp (tests simulate nights with it). */
+  now?: () => Date;
 }
 
 /**
@@ -27,7 +29,8 @@ export interface CrawlResult {
 }
 
 export async function crawlSource(config: SourceConfig, opts: CrawlOptions): Promise<CrawlResult> {
-  const startedAt = new Date();
+  const now = opts.now ?? (() => new Date());
+  const startedAt = now();
   const runId = `${config.id}-${startedAt.toISOString().replace(/[:.]/g, '-')}`;
   const logger = opts.logger.child({ runId, sourceId: config.id, configVersion: config.version });
   const http = new HttpClient({ ...config.http, logger });
@@ -80,7 +83,7 @@ export async function crawlSource(config: SourceConfig, opts: CrawlOptions): Pro
   const units: Unit[] = [];
   let detailFailed = 0;
   let invalid = 0;
-  const scrapedAt = new Date().toISOString();
+  const scrapedAt = now().toISOString();
 
   await forEachPool(selected, config.http.concurrency, async (stub) => {
     let detail: DetailResult | undefined;
@@ -95,7 +98,8 @@ export async function crawlSource(config: SourceConfig, opts: CrawlOptions): Pro
         writeLine(errorsOut, { stage: 'detail', key: stub.key, url: stub.url, error: (err as Error).message });
       }
     }
-    const result = normalizeUnit(config, stub, detail, scrapedAt);
+    const detailStatus = !config.detail?.enabled ? undefined : !wantDetail ? 'skipped' : detail ? 'ok' : 'failed';
+    const result = normalizeUnit(config, stub, detail, scrapedAt, { detailStatus });
     if (result.ok) {
       units.push(result.unit);
       writeLine(unitsOut, result.unit);
@@ -111,7 +115,7 @@ export async function crawlSource(config: SourceConfig, opts: CrawlOptions): Pro
     runId,
     config,
     startedAt,
-    finishedAt: new Date(),
+    finishedAt: now(),
     partial: opts.limit !== undefined || opts.maxPages !== undefined,
     siteTotal: siteTotals.size ? [...siteTotals.values()].reduce((a, b) => a + b, 0) : undefined,
     discovered: stubs.size,

@@ -69,7 +69,7 @@ for (const { config } of loaded) {
           foundOn: page.url,
         };
         const detail = parseDetailPage(config, await read(page.file), page.url);
-        const result = normalizeUnit(config, stub, detail, SCRAPED_AT);
+        const result = normalizeUnit(config, stub, detail, SCRAPED_AT, { detailStatus: 'ok' });
         if (!result.ok) throw new Error(result.errors.join('\n'));
 
         const unit = result.unit as unknown as Record<string, unknown>;

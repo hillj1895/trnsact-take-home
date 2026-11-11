@@ -8,6 +8,7 @@ exports[`fixtures: transwest > parses + normalizes detail page detail-95H1554.ht
   "condition": "used",
   "dealerId": "transwest",
   "description": undefined,
+  "detailStatus": "ok",
   "hours": undefined,
   "isRental": false,
   "listingUrl": "https://www.transwest.com/trucks/type/dump/store/st-michael-mn-commercial-trucks-and-trailers/used-2019-freightliner-m2-106-95h1554/",

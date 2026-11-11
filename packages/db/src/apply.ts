@@ -114,6 +114,21 @@ export async function applyRun(pool: pg.Pool, runId: string): Promise<ApplyStats
       [runId, src],
     );
 
+    // Degraded observations (detail page failed or skipped this run): only the
+    // list-level facets were observed. Carry the stored details + media forward
+    // instead of reading "no specs, no photos" as a change; price and
+    // availability (from the list card) are still diffed below.
+    await client.query(
+      `UPDATE m SET details_hash = old_details_hash, media_hash = old_media_hash,
+         data = old_data || jsonb_build_object(
+           'price', data->'price', 'availability', data->'availability', 'availabilityRaw', data->'availabilityRaw',
+           'scrapedAt', data->'scrapedAt', 'warnings', data->'warnings')
+       WHERE unit_id IS NOT NULL AND data->>'detailStatus' IN ('failed', 'skipped')`,
+    );
+    // The reverse: the stored record never had detail data (first seen degraded).
+    // Its first complete observation is a backfill, not a change — update, no event.
+    const backfill = `coalesce(old_data->>'detailStatus', 'ok') NOT IN ('failed', 'skipped')`;
+
     // ---- 3. NEW ----------------------------------------------------------------
     await client.query(
       `WITH ins AS (
@@ -205,7 +220,7 @@ export async function applyRun(pool: pg.Pool, runId: string): Promise<ApplyStats
     await client.query(
       `INSERT INTO unit_events (unit_id, run_id, type, occurred_at, changes)
        SELECT unit_id, $1, 'DETAILS_CHANGED', $2, jsonb_diff(details_doc(old_data, $3), details_doc(data, $3))
-       FROM m WHERE NOT is_new AND details_hash <> old_details_hash`,
+       FROM m WHERE NOT is_new AND details_hash <> old_details_hash AND ${backfill}`,
       [runId, at, ignore],
     );
 
@@ -215,7 +230,7 @@ export async function applyRun(pool: pg.Pool, runId: string): Promise<ApplyStats
          'added',   ${mediaKeysMinus(`m.data->'media'`, `m.old_data->'media'`)},
          'removed', ${mediaKeysMinus(`m.old_data->'media'`, `m.data->'media'`)},
          'count',   ${oldNew(`jsonb_array_length(m.old_data->'media')`, `jsonb_array_length(m.data->'media')`)})
-       FROM m WHERE NOT is_new AND media_hash <> old_media_hash`,
+       FROM m WHERE NOT is_new AND media_hash <> old_media_hash AND ${backfill}`,
       [runId, at],
     );
 

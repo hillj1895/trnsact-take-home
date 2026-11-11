@@ -64,6 +64,14 @@ export const Unit = z.object({
   specs: z.record(z.string(), z.string()),
   media: z.array(MediaItem),
 
+  /**
+   * Whether this observation includes the detail page. `failed` / `skipped` units
+   * carry list data only (price, availability, identity): change detection must
+   * not read their empty specs/media as "everything was deleted". Absent when the
+   * source has no detail pages at all.
+   */
+  detailStatus: z.enum(['ok', 'failed', 'skipped']).optional(),
+
   scrapedAt: z.string().datetime(),
   /** Non-fatal extraction issues (field conflicts between sources, unmapped values, …). */
   warnings: z.array(z.string()),

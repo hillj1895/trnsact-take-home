@@ -35,6 +35,7 @@ export function normalizeUnit(
   stub: ListingStub,
   detail: DetailResult | undefined,
   scrapedAt: string,
+  opts: { detailStatus?: Unit['detailStatus'] } = {},
 ): NormalizeResult {
   const warnings = [...stub.warnings, ...(detail?.warnings ?? [])];
   const fields = mergeFields(stub.fields, detail?.fields ?? {}, warnings);
@@ -91,6 +92,7 @@ export function normalizeUnit(
     description: str(fields.description),
     specs: detail?.specs ?? {},
     media: detail?.media ?? [],
+    detailStatus: opts.detailStatus,
     scrapedAt,
     warnings,
   };

@@ -6,6 +6,7 @@ Implementation notes vs. this plan:
 - Spec labels that repeat a tracked facet (Transwest: "List Price", "Status") are excluded from the details hash via the per-source `detail.hashIgnoreSpecs` config, so one price cut fires only `PRICE_CHANGED`.
 - `DETAILS_CHANGED` payloads flatten specs (`details_doc()`, migration 0002), e.g. `{"spec:Exterior Color": {"old": "Blue", "new": "Red"}}`.
 - Removal closes open price/availability ranges at the run that confirms removal.
+- Degraded observations (`detailStatus` `failed`/`skipped`) only update the facets the run saw (price, availability). Stored details and media carry forward, and a unit's first complete observation is a silent backfill. This was found by the end-to-end scenario suite (README → Testing inventory changes).
 
 Schema: [`packages/db/migrations/0001_init.sql`](../packages/db/migrations/0001_init.sql)
 (applied and constraint-tested against a local Postgres 14).
