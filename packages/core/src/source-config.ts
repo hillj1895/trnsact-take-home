@@ -173,6 +173,11 @@ export const SourceConfig = z.object({
       enabled: z.boolean().default(true),
       jsonLd: z.object({ type: z.string() }).optional(),
       specs: z.array(SpecBlock).default([]),
+      /**
+       * Spec labels that duplicate a tracked facet (e.g. "List Price", "Status") and so are
+       * left out of the details hash — otherwise one price cut fires PRICE_ and DETAILS_CHANGED.
+       */
+      hashIgnoreSpecs: z.array(z.string()).default([]),
       /** Detail fields override list fields when both are present (conflicts become warnings). */
       fields: FieldMap.default({}),
       media: z.array(MediaRule).default([]),

@@ -1,7 +1,7 @@
 {
   "$comment": "Transwest (multi-location truck/trailer dealer group). Agency-built Laravel Livewire site; fully server-rendered. Cards carry structured data-* attributes plus a JSON blob; detail pages have schema.org Vehicle JSON-LD and two spec layouts.",
   "id": "transwest",
-  "version": 2,
+  "version": 3,
   "enabled": true,
   "dealer": { "id": "transwest", "name": "Transwest" },
   "driver": "html",
@@ -52,6 +52,7 @@
       { "row": ".section-product-specs__list li", "label": "span" },
       { "row": ".basic-panel__detail", "label": "dt", "value": "dd" }
     ],
+    "hashIgnoreSpecs": ["List Price", "Status"],
     "fields": {
       "vin": { "from": "jsonld", "path": "vehicleIdentificationNumber", "transforms": ["trim", "upper"] },
       "stockNumber": [
