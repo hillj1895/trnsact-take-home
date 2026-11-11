@@ -34,3 +34,15 @@ Yeah let's go ahead and create the monorepo. For the time being, let's not worry
 [4] Git setup
 --------------------------------------------------------------------------------
 Okay yeah I would like to get more organized with git. Lets go ahead and link with this repo I just created: https://github.com/hillj1895/trnsact-take-home and create an initial commit following commitizen-esque standards
+
+[5] Persistence + change detection plan
+--------------------------------------------------------------------------------
+Okay lets move into the next step of persistence and ideate on a strategy to track changes in inventory data. I think brute force solution here would be to compare incoming records with records we currently have stored, but I assume there is a cleaner/more efficient DB solution that we could utilize here. Also, let's start planning a DB schema. In there, go ahead and take a stab at creating the schema for now and write up aplan of attack for change detection and I will review
+
+[6] Regroup on open decisions
+--------------------------------------------------------------------------------
+Sorry I think I may have moved on past some past decisions in the past chats, can we just regroup and you give me a summary of what decisions you need from me that I have not addressed yet with the implementation thus far?
+
+[7] Approve persistence decisions
+--------------------------------------------------------------------------------
+Okay for the persistence decisions, I am fine with the first 3 recommendations and the schema and change detections plans. We can continue to ideate on the remaining items after that is complete
